@@ -1,0 +1,5 @@
+<sshconnect>
+	<from>Umaster</from>
+	<to>Uslave01,Uslave02,Uslave03</to>
+	<comments>主节点向从节点ssh免密码登陆</comments>
+</sshconnect>
