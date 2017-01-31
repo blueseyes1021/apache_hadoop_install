@@ -22,18 +22,27 @@
 #           hadoop-2.7.2.tar.gz
 # 更新日期：2017.01.30
 # 更新内容：调整/etc/profile.d目录下生成的配置脚本为多行输出
-#           并载入到PATH环境变量中
-#           考虑用多线程实现并发安装组件
+# 更新日期：2017.01.31
+# 更新内容：多线程实现各结点并发安装组件
+#           载入到PATH环境变量中
+#           重构代码
 # 作    者：曲怀觞
 # ***************************************************************************
 
 
-# 需要安装 paramiko 模块 (ssh远程操作主机)
 import sys
 import os
 import re
+# 需要安装 paramiko 模块 (ssh远程操作主机)
 import paramiko
 from getopt import getopt
+from atexit import register
+# 多线程并发
+from threading import Thread
+# 显示时间
+from time import ctime
+# 计算时间差
+from datetime import datetime
 
 
 # ###########################################################################
@@ -107,11 +116,36 @@ def get_linkname(d, software):
 
 
 # ###########################################################################
+# function: scp_software
+# input:    (d, software, host)
+# return:   none
+# ###########################################################################
+def scp_software(d, software, host):
+    '''
+        根据压缩文件类型
+        自动返回解压缩安装指令
+    '''
+    if host == d['nn_host']:
+        pass
+    else:
+        scp_cmd = 'scp ' + d['SOFTWARE_PATH']       \
+                    + software + ' ' + host + ':'   \
+                    + d['INSTALL_PATH']
+
+        try:
+            os.system(scp_cmd)
+            print 'scp ' + software + ' to ' + host + ' done!'
+        except:
+            sys.exit('scp ' + software + ' to ' + host + ' error')
+
+
+
+# ###########################################################################
 # function: uncompress_software
-# input:    (d, software)
+# input:    (d, software, host)
 # return:   uncompress_cmd
 # ###########################################################################
-def uncompress_software(d, software):
+def uncompress_software(d, software, host):
     '''
         根据压缩文件类型
         自动返回解压缩安装指令
@@ -121,11 +155,19 @@ def uncompress_software(d, software):
     elif re.search(r'.bz2', software):
         opt = '-jxf'
 
-    software_path = d['SOFTWARE_PATH']
     install_path = d['INSTALL_PATH']
-    uncompress_cmd = 'tar ' + opt + ' ' + software_path \
+
+    if host == d['nn_host']:
+        sw_path = d['SOFTWARE_PATH']
+        uncompress_cmd = 'tar ' + opt + ' ' + sw_path       \
                     + software + ' -C ' + install_path
-    
+    else:
+        sw_path = d['INSTALL_PATH']
+        uncompress_cmd = uncompress_cmd = 'tar ' + opt      \
+                    + ' ' + sw_path + software + ' -C '     \
+                    + install_path + ' && rm -rf '          \
+                    + sw_path + software
+
     return uncompress_cmd
 
 
@@ -174,6 +216,21 @@ def profiled_software(d, software):
 
     return profiled_cmd
 
+
+# ###########################################################################
+# function: source_profile
+# input:    (d, software)
+# return:   source_cmd
+# ###########################################################################
+def source_profile(d, software):
+    '''
+        加载环境变量
+    '''
+    link_name = get_linkname(d, software)
+    profile_path = d['PROFILED']
+    source_cmd = 'source ' + profile_path + link_name + r'.sh'
+
+    return source_cmd
 
 # ###########################################################################
 # function: operate_dir
@@ -377,6 +434,64 @@ def set_env(d):
 
 
 # ###########################################################################
+# function: call_func
+# input:    (command, d, host)
+# return:   none
+# ###########################################################################
+def call_func(command, d, host):
+    '''
+        执行命令：封装本地和ssh远程调用
+    '''
+    if host == d['nn_host']:
+        try:
+            os.system(command)
+        except:
+            sys.exit(command + " error!")
+        
+    else:
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(host, int(d['PORT']), d['USER'], d['PASSWD'])
+        except:
+            sys.exit('create sshclient error!')
+        
+        try:
+            (stdin, stdout, stderr) = ssh.exec_command(command)
+        except:
+            sys.exit(stderr)
+        
+        try:
+            ssh.close()
+        except:
+            sys.exit('close sshclient error!')
+
+
+# ###########################################################################
+# function: group_steps
+# input:    (d, software, host)
+# return:   none
+# ###########################################################################
+def group_steps(d, software, host):
+    '''
+        对某一组件安装步骤组合
+    '''
+    # 复制软件包
+    scp_software(d, software, host)
+    # 解压软件包
+    call_func(uncompress_software(d, software, host), d, host)
+    print software + ' uncompressed.'
+    # 创建软链接
+    call_func(link_software(d, software), d, host)
+    print software + ' link created.'
+    # 创建自启动环境变量
+    call_func(profiled_software(d, software), d, host)
+    print software + ' profile created.'
+    # 加载环境变量
+    #call_func(source_profile(d, software), d, host)
+
+
+# ###########################################################################
 # function: install_software
 # input:    (d, software)
 # return:   none
@@ -387,67 +502,32 @@ def install_software(d, software):
         遍历主从节点
         执行各步骤返回的指令
     '''
-    for host in d['all_hosts'].split(','):
-        print "Install " + software + " to " + host
-        print '-' * 48
-        if host == d['nn_host']:
-            # 解压软件包
-            try:
-                os.system(uncompress_software(d, software))
-                print "uncompress " + software + " done!"
-            except:
-                sys.exit("uncompress " + software + " error!")
-            # 创建软链接
-            try:
-                os.system(link_software(d, software))
-                print "create link:" + software + " done!"
-            except:
-                sys.exit("create link:" + software + " error!")
-            # 创建自启动环境变量
-            try:
-                os.system(profiled_software(d, software))
-                print "init " + software + " profile done!"
-            except:
-                sys.exit("init " + software + " profile error!")
-    
-        else:
-            try:
-                os.system('scp ' + d['SOFTWARE_PATH']       \
-                            + software + ' ' + host + ':'   \
-                            + d['INSTALL_PATH'])
-                print 'scp ' + d['SOFTWARE_PATH']           \
-                            + software + ' ' + host + ':'   \
-                            + d['INSTALL_PATH']
-            except:
-                sys.exit('scp ' + software + ' to ' + host + " error")
-            
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host, int(d['PORT']), d['USER'], d['PASSWD'])
-            
-            try:
-                ssh.exec_command(uncompress_software(d, software)
-                                    + ' && rm -rf ' \
-                                    + d['INSTALL_PATH'] + software)
-                print "uncompress " + software + " done!"
-            except:
-                sys.exit("uncompress " + software + " error!")
-            
-            try:
-                ssh.exec_command(link_software(d, software))
-                print "create link " + software + " done!"
-            except:
-                print "create link " + software + " error!"
-            
-            try:
-                ssh.exec_command(profiled_software(d, software))
-                print "create profile " + software + " done!"
-            except:
-                print "create profile " + software + " error!"
-            
-            ssh.close()
+    print 'At ' + ctime() + ' install ' + software + ' begin'
+    print '=' * 48
+    starttime = datetime.now()
+    threads = []
 
-        print ''
+    for host in d['all_host'].split(','):
+
+        # 并发处理
+        t = Thread(target=group_steps,
+                args=(d, software, host))
+        threads.append(t)
+
+    numbers = range(len(d['all_host'].split(',')))
+
+    for i in numbers:
+        threads[i].start()
+
+    for i in numbers:
+        threads[i].join()
+
+    endtime = datetime.now()
+    print '=' * 48
+    print 'At ' + ctime() + ' install ' + software + ' done!'
+    print 'Use time: %d' % (endtime - starttime).seconds
+    print '-' * 48
+    print ''
 
 
 
@@ -464,57 +544,17 @@ def clean_software(d, software):
     '''
     link_name = get_linkname(d, software)
     unpack_name = software.split(r'.t')[0]
-    print 'Clean ' + software + 'Please waiting...'
+    print 'Clean ' + software + ' please waiting...'
     print '=' * 48
-    for host in d['all_hosts'].split(','):
-        print "Begin to clean " + host
-        print '-' * 48
+    for host in d['all_host'].split(','):
     
-        if host == d['nn_host']:
-            try:
-                os.system('rm -rf ' + d['INSTALL_PATH'] + unpack_name)
-                print "clean " + software + " done!"
-            except:
-                print "clean " + software + " error!"
-        
-            try:
-                os.system('rm -rf ' + d['LINK_HOME'] + link_name)
-                print "clean " + link_name + " link done!"
-            except:
-                print "clean " + link_name + " link error!"
+        call_func('rm -rf ' + d['INSTALL_PATH'] + unpack_name, d, host)
+        call_func('rm -rf ' + d['LINK_HOME'] + link_name, d, host)
+        call_func('rm -rf ' + d['PROFILED'] + link_name + r'.sh', d, host)
 
-            try:
-                os.system('rm -rf ' + d['PROFILED'] + link_name + r'.sh')
-                print "clean profile " + link_name + " link done!"
-            except:
-                print "clean profile " + link_name + " link error!"
-        
-        else:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host, int(d['PORT']), d['USER'], d['PASSWD'])
-            
-            try:
-                ssh.exec_command('rm -rf ' + d['INSTALL_PATH'] + unpack_name)
-                print "clean " + software + " done!"
-            except:
-                print "clean " + software + " error!"
-            
-            try:
-                ssh.exec_command('rm -rf ' + d['LINK_HOME'] + link_name)
-                print "clean " + link_name + " link done!"
-            except:
-                print "clean " + link_name + " link error!"
+        print 'Clean ' + host + ' done!'
 
-            try:
-                ssh.exec_command('rm -rf ' + d['PROFILED'] + link_name + r'.sh')
-                print "clean profile " + link_name + " link done!"
-            except:
-                print "clean profile " + link_name + " link error!"
-            
-            ssh.close()
-
-        print ''
+    print '-' * 48
 
 # ###########################################################################
 # function: init_hadoop
@@ -527,43 +567,21 @@ def init_hadoop(d):
         遍历主从节点
         执行各步骤返回的指令
     '''
-    for host in d['all_hosts'].split(','):
+    for host in d['all_host'].split(','):
         print "Create user and dir for " + host
         print '-' * 48
-        if host == d['nn_host']:
-            for command in operate_dir(d, 'mkdir -p'):
-                print command
-                os.system(command)
-            for command in create_user(d):
-                print command
-                os.system(command)
-            for command in chmod_user(d):
-                print command
-                os.system(command)
-            for command in set_env(d):
-                print command
-                os.system(command)
-        
-        else:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host, int(d['PORT']), \
-            d['USER'], d['PASSWD'])
-            
-            for command in operate_dir(d, 'mkdir -p'):
-                print command
-                ssh.exec_command(command)
-            for command in create_user(d):
-                print command
-                ssh.exec_command(command)
-            for command in chmod_user(d):
-                print command
-                ssh.exec_command(command)
-            for command in set_env(d):
-                print command
-                ssh.exec_command(command)
 
-            ssh.close()
+        for command in operate_dir(d, 'mkdir -p'):
+            call_func(command, d, host)
+
+        for command in create_user(d):
+            call_func(command, d, host)
+
+        for command in chmod_user(d):
+            call_func(command, d, host)
+
+        for command in set_env(d):
+            call_func(command, d, host)
 
         print ''
 
@@ -575,31 +593,15 @@ def init_hadoop(d):
 # ###########################################################################
 def clean_hadoop(d):
     # 清理用户及目录
-    for host in d['all_hosts'].split(','):
+    for host in d['all_host'].split(','):
         print "clean users and dir for " + host
         print '-' * 48
-        if host == d['nn_host']:
-            for command in operate_dir(d, 'rm -rf'):
-                print command
-                os.system(command)
-            for command in clean_user(d):
-                print command
-                os.system(command)
-        
-        else:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host, int(d['PORT']), d['USER'], d['PASSWD'])
-            
-            for command in operate_dir(d, 'rm -rf'):
-                print command
-                ssh.exec_command(command)
-            for command in clean_user(d):
-                print command
-                ssh.exec_command(command)
 
-            ssh.close()
+        for command in operate_dir(d, 'rm -rf'):
+            call_func(command, d, host)
 
+        for command in clean_user(d):
+            call_func(command, d, host)
 
 
 # ###########################################################################
@@ -625,7 +627,6 @@ def main(argv = None):
     # 默认配置文件与安装脚本在同一目录下
     dict_conf = load_config("hadoop_install.cfg")
     
-    
     for op, package_name in opts:
         # 软件包名称不为空时：
         # 从添加、删除、更新组件中选取
@@ -645,7 +646,6 @@ def main(argv = None):
             # 选项不存在
             else:
                 sys.exit("There is no other options")
-        
         
         # 软件包名称为空时：
         # 从安装、卸载、帮助选项中选取
