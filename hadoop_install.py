@@ -24,7 +24,7 @@
 # 更新内容：调整/etc/profile.d目录下生成的配置脚本为多行输出
 # 更新日期：2017.01.31
 # 更新内容：多线程实现各结点并发安装组件
-#           载入到PATH环境变量中
+#           添加切换组件不同版本功能
 #           重构代码
 # 作    者：曲怀觞
 # ***************************************************************************
@@ -91,7 +91,7 @@ def print_help():
     print "# 帮助: -h or --help"
     print "# 添加组件: -a or --add software"
     print "# 删除组件: -d or --delete software"
-    print "# 更新组件: -u or --update software"
+    print "# 更新组件: -s or --switch software"
     print "# -------------------------------------------------"
     print "# 配置文件： hadoop_install.cfg"
     print "# -------------------------------------------------"
@@ -187,8 +187,10 @@ def link_software(d, software):
     upkname = software.split(r'.t')[0]
     
     link_cmd = 'if [ ! -d ' + link_path + ' ];then mkdir -p '   \
-        + link_path + ';fi && ln -s ' + install_path            \
-        + upkname + ' ' + link_path + link_name
+        + link_path + ';fi && if [ -e ' + link_path + link_name \
+        + ' ];then rm ' + link_path + link_name                 \
+        + ';fi && ln -s ' + install_path + upkname + ' '        \
+        + link_path + link_name
 
     return link_cmd
 
@@ -213,6 +215,9 @@ def profiled_software(d, software):
                         + link_name + r'.sh && echo export PATH=$PATH:' \
                         + '\$' + path_home + '/bin' + '>>'      \
                         + profile_path + link_name + r'.sh'
+
+    if os.path.exists(profile_path + link_name + r'.sh'):
+        profiled_cmd = ''
 
     return profiled_cmd
 
@@ -530,6 +535,20 @@ def install_software(d, software):
     print ''
 
 
+# ###########################################################################
+# function: switch_software
+# input:    (d, software, host)
+# return:   none
+# ###########################################################################
+def switch_software(d, software):
+    '''
+        切换软件版本
+    '''
+    for host in d['all_host'].split(','):
+        call_func(link_software(d, software), d, host)
+        print 'For ' + host + ' switch link to ' + software
+
+
 
 # ###########################################################################
 # function: clean_software
@@ -614,15 +633,15 @@ def main(argv = None):
         主函数
     '''
     # 设置参数选项
-    opts, args = getopt(sys.argv[1:], "a:cd:hiu:",      \
+    opts, args = getopt(sys.argv[1:], "a:cd:his:",      \
                     [                                   \
                         "add=", "clean", "delete=",     \
-                        "help", "install", "update="    \
+                        "help", "install", "switch="    \
                     ])
     argnum = len(opts)
 
     if not ( argnum == 1 or argnum == 2 ):
-        sys.exit("Usage: hadoop_install.py -[cih] | -[adu] software_name")
+        sys.exit("Usage: hadoop_install.py -[cih] | -[ads] software_name")
     
     # 默认配置文件与安装脚本在同一目录下
     dict_conf = load_config("hadoop_install.cfg")
@@ -631,18 +650,12 @@ def main(argv = None):
         # 软件包名称不为空时：
         # 从添加、删除、更新组件中选取
         if not package_name == '':
-            try:
-                link_name = get_linkname(dict_conf, package_name)
-                unpack_name = package_name.split(r'.t')[0]
-            except:
-                sys.exit("init link_name and uppack_name error!")
-            
             if op in ( "-a", "--add" ):
                 install_software(dict_conf, package_name)
             elif op in ( "-d", "--delete" ):
                 clean_software(dict_conf, package_name)
-            elif op in ( "-u", "--update" ):
-                pass
+            elif op in ( "-s", "--switch" ):
+                switch_software(dict_conf, package_name)
             # 选项不存在
             else:
                 sys.exit("There is no other options")
@@ -656,8 +669,6 @@ def main(argv = None):
                     if re.search(r'_PKG' ,key):
                         package_name = dict_conf[key]
                         try:
-                            link_name = get_linkname(dict_conf, package_name)
-                            unpack_name = package_name.split(r'.t')[0]
                             clean_software(dict_conf, package_name)
                         except:
                             sys.exit("clean " + package_name + " error")
