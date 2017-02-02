@@ -1,19 +1,19 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # ***************************************************************************
-# 程 序 名: hadoop_install.py
-# 配置文件: hadoop_install.cfg
-# 说    明: hadoop环境搭建及相关组件安装
-# 创建时间：2016.09.30
-# 更新时点：2016.12.18
+# 程 序 名：hadoop_install.py
+# 配置文件：hadoop_install.cfg
+# 说    明：hadoop环境搭建及相关组件安装
+# 创建日期：2016.09.30
+# 更新日期：2016.12.18
 # 更新内容：添加选项参数
 #           hadoop_install.py -[cih] | -[adu] software_name
-#               -c  ==> --clean
-#               -i  ==> --install
-#               -h  ==> --help
-#               -a  ==> --add       software
-#               -d  ==> --delete software
-#               -u  ==> --update software
+#             -c  ==> --clean
+#             -i  ==> --install
+#             -h  ==> --help
+#             -a  ==> --add       software
+#             -d  ==> --delete software
+#             -u  ==> --update software
 # 更新日期：2016.12.19
 # 更新内容：添加hadoop-env.sh文件中JAVA_HOME环境变量
 # 更新日期：2016.12.24
@@ -26,6 +26,10 @@
 # 更新内容：多线程实现各结点并发安装组件
 #           添加切换组件不同版本功能
 #           重构代码
+# 更新日期：2017.02.02
+# 更新内容：自动配置xml
+#           更新slaves文件
+#           拷贝配置信息到从节点
 # 作    者：曲怀觞
 # ***************************************************************************
 
@@ -43,18 +47,21 @@ from threading import Thread
 from time import ctime
 # 计算时间差
 from datetime import datetime
+# 导入配置xml程序文件
+import hadoop_configure
+import json
+from xml.etree import ElementTree
+from xml.dom.minidom import parse
 
 
 # ###########################################################################
-# function: load_config
-# input:    config file(配置文件)
-# return:   dict(配置信息存储在字典中)
+# 函数名：load_config
+# 输  入：config file(配置文件)
+# 返回值：dict(配置信息存储在字典中)
 # ###########################################################################
 def load_config(cfg):
     '''
         读取hadoop安装配置文件，并生成配置信息字典
-        input: hadoop_install.cfg
-        return: dict_conf
     '''
     d = {}
     fh = open(cfg, 'r')
@@ -75,36 +82,36 @@ def load_config(cfg):
 
 
 # ###########################################################################
-# function: print_help
-# input:    none
-# return:   none
+# 函数名：print_help
+# 输  入：none
+# 返回值：none
 # ###########################################################################
 def print_help():
     '''
         输出帮助信息
     '''
     print "# -------------------------------------------------"
-    print "# Usage: hadoop_install.py -[cih] | -[adu] software"
+    print "# 用法： hadoop_install.py -[cih] | -[adu] software"
     print "# -------------------------------------------------"
-    print "# 卸载hadoop: -c or --clean"
-    print "# 安装hadoop: -i or --install"
-    print "# 帮助: -h or --help"
-    print "# 添加组件: -a or --add software"
-    print "# 删除组件: -d or --delete software"
-    print "# 更新组件: -s or --switch software"
+    print "# 卸 载hadoop：-c or --clean                       "
+    print "# 安 装hadoop：-i or --install                     "
+    print "# 帮       助：-h or --help                        "
+    print "# 添 加 组 件：-a or --add software                "
+    print "# 删 除 组 件：-d or --delete software             "
+    print "# 更 新 组 件：-s or --switch software             "
     print "# -------------------------------------------------"
-    print "# 配置文件： hadoop_install.cfg"
+    print "# 配置文件：hadoop_install.cfg"
     print "# -------------------------------------------------"
 
 
 # ###########################################################################
-# function: get_linkname
-# input:    (d, software)
-# return:   linkname
+# 函数名：get_linkname
+# 输  入：(d, software)
+# 返回值：linkname
 # ###########################################################################
 def get_linkname(d, software):
     '''
-        返回linkname
+        生成软链接名
     '''
     if re.match('jdk', software):
         key = 'JAVA_HOME'
@@ -116,11 +123,11 @@ def get_linkname(d, software):
 
 
 # ###########################################################################
-# function: scp_software
-# input:    (d, software, host)
-# return:   none
+# 函数名：scp_file
+# 输  入：(d, filename, host, path)
+# 返回值：none
 # ###########################################################################
-def scp_software(d, software, host):
+def scp_file(d, filename, host, path):
     '''
         根据压缩文件类型
         自动返回解压缩安装指令
@@ -128,22 +135,21 @@ def scp_software(d, software, host):
     if host == d['nn_host']:
         pass
     else:
-        scp_cmd = 'scp ' + d['SOFTWARE_PATH']       \
-                    + software + ' ' + host + ':'   \
-                    + d['INSTALL_PATH']
+        scp_cmd = 'scp ' + filename     \
+            + ' ' + host + ':' + path
 
         try:
             os.system(scp_cmd)
-            print 'scp ' + software + ' to ' + host + ' done!'
+            print 'scp ' + filename + ' to ' + host + ' done!'
         except:
-            sys.exit('scp ' + software + ' to ' + host + ' error')
+            sys.exit('scp ' + filename + ' to ' + host + ' error')
 
 
 
 # ###########################################################################
-# function: uncompress_software
-# input:    (d, software, host)
-# return:   uncompress_cmd
+# 函数名：uncompress_software
+# 输  入：(d, software, host)
+# 返回值：uncompress_cmd
 # ###########################################################################
 def uncompress_software(d, software, host):
     '''
@@ -172,14 +178,13 @@ def uncompress_software(d, software, host):
 
 
 # ###########################################################################
-# function: link_software
-# input:    (d, software)
-# return:   link_cmd
+# 函数名：link_software
+# 输  入：(d, software)
+# 返回值：link_cmd
 # ###########################################################################
 def link_software(d, software):
     '''
         返回创建软件链接命令
-        链接目录为 /usr/mylink/
     '''
     link_name = get_linkname(d, software)
     link_path = d['LINK_HOME']
@@ -196,14 +201,13 @@ def link_software(d, software):
 
 
 # ###########################################################################
-# function: profiled_software
-# input:    (d, software)
-# return:   profiled_cmd
+# 函数名：profiled_software
+# 输  入：(d, software)
+# 返回值：profiled_cmd
 # ###########################################################################
 def profiled_software(d, software):
     '''
         返回配置环境变量指令
-        启动服务自动载入
     '''
     link_name = get_linkname(d, software)
     profile_path = d['PROFILED']
@@ -223,9 +227,9 @@ def profiled_software(d, software):
 
 
 # ###########################################################################
-# function: source_profile
-# input:    (d, software)
-# return:   source_cmd
+# 函数名：source_profile
+# 输  入：(d, software)
+# 返回值：source_cmd
 # ###########################################################################
 def source_profile(d, software):
     '''
@@ -238,9 +242,9 @@ def source_profile(d, software):
     return source_cmd
 
 # ###########################################################################
-# function: operate_dir
-# input:    (d, opt)
-# return:   commands
+# 函数名：operate_dir
+# 输  入：(d, opt)
+# 返回值：commands
 # ###########################################################################
 def operate_dir(d, opt):
     '''
@@ -279,9 +283,9 @@ def operate_dir(d, opt):
 
 
 # ###########################################################################
-# function: create_user
-# input:    (d)
-# return:   commands
+# 函数名：create_user
+# 输  入：(d)
+# 返回值：commands
 # ###########################################################################
 def create_user(d):
     '''
@@ -307,9 +311,9 @@ def create_user(d):
 
 
 # ###########################################################################
-# function: clean_user
-# input:    (d)
-# return:   commands
+# 函数名：clean_user
+# 输  入：(d)
+# 返回值：commands
 # ###########################################################################
 def clean_user(d):
     '''
@@ -332,9 +336,9 @@ def clean_user(d):
 
 
 # ###########################################################################
-# function: chmod_user
-# input:    (d)
-# return:   commands
+# 函数名：chmod_user
+# 输  入：(d)
+# 返回值：commands
 # ###########################################################################
 def chmod_user(d):
     '''
@@ -391,9 +395,9 @@ def chmod_user(d):
 
 
 # ###########################################################################
-# function: set_env
-# input:    (d)
-# return:   commands
+# 函数名：set_env
+# 输  入：(d)
+# 返回值：commands
 # ###########################################################################
 def set_env(d):
     '''
@@ -439,9 +443,9 @@ def set_env(d):
 
 
 # ###########################################################################
-# function: call_func
-# input:    (command, d, host)
-# return:   none
+# 函数名：call_func
+# 输  入：(command, d, host)
+# 返回值：none
 # ###########################################################################
 def call_func(command, d, host):
     '''
@@ -473,16 +477,17 @@ def call_func(command, d, host):
 
 
 # ###########################################################################
-# function: group_steps
-# input:    (d, software, host)
-# return:   none
+# 函数名：group_steps
+# 输  入：(d, software, host)
+# 返回值：none
 # ###########################################################################
 def group_steps(d, software, host):
     '''
         对某一组件安装步骤组合
     '''
+    path = d['INSTALL_PATH']
     # 复制软件包
-    scp_software(d, software, host)
+    scp_file(d, d['SOFTWARE_PATH'] + software, host, path)
     # 解压软件包
     call_func(uncompress_software(d, software, host), d, host)
     print software + ' uncompressed.'
@@ -497,15 +502,13 @@ def group_steps(d, software, host):
 
 
 # ###########################################################################
-# function: install_software
-# input:    (d, software)
-# return:   none
+# 函数名：install_software
+# 输  入：(d, software)
+# 返回值：none
 # ###########################################################################
 def install_software(d, software):
     '''
-        安装hadoop及组件
-        遍历主从节点
-        执行各步骤返回的指令
+        安装组件
     '''
     print 'At ' + ctime() + ' install ' + software + ' begin'
     print '=' * 48
@@ -536,9 +539,9 @@ def install_software(d, software):
 
 
 # ###########################################################################
-# function: switch_software
-# input:    (d, software, host)
-# return:   none
+# 函数名：switch_software
+# 输  入：(d, software, host)
+# 返回值：none
 # ###########################################################################
 def switch_software(d, software):
     '''
@@ -551,9 +554,9 @@ def switch_software(d, software):
 
 
 # ###########################################################################
-# function: clean_software
-# input:    (d, software)
-# return:   none
+# 函数名：clean_software
+# 输  入：(d, software)
+# 返回值：none
 # ###########################################################################
 def clean_software(d, software):
     '''
@@ -576,15 +579,13 @@ def clean_software(d, software):
     print '-' * 48
 
 # ###########################################################################
-# function: init_hadoop
-# input:    (d)
-# return:   none
+# 函数名：init_hadoop
+# 输  入：(d)
+# 返回值：none
 # ###########################################################################
 def init_hadoop(d):
     '''
         创建hadoop集群所需目录、用户等
-        遍历主从节点
-        执行各步骤返回的指令
     '''
     for host in d['all_host'].split(','):
         print "Create user and dir for " + host
@@ -606,12 +607,14 @@ def init_hadoop(d):
 
 
 # ###########################################################################
-# function: clean_hadoop
-# input:    (d)
-# return:   none
+# 函数名：clean_hadoop
+# 输  入：(d)
+# 返回值：none
 # ###########################################################################
 def clean_hadoop(d):
-    # 清理用户及目录
+    '''
+        清理用户及目录
+    '''
     for host in d['all_host'].split(','):
         print "clean users and dir for " + host
         print '-' * 48
@@ -624,9 +627,45 @@ def clean_hadoop(d):
 
 
 # ###########################################################################
-# function: main
-# input:    none
-# return:   none
+# 函数名：config_hadoop
+# 输  入：(d)
+# 返回值：none
+# ###########################################################################
+def config_hadoop(d):
+    '''
+        添加hadoop配置信息
+    '''
+    cfg_file = d['HADOOP_JSON']
+    xml_path = d['HADOOP_ETC']
+
+    fh = open(cfg_file, 'r')
+    data = json.load(fh)
+
+    for xml_file in data.keys():
+        for array in data.values():
+            for nm_vl in array:
+                name = "".join(nm_vl.keys())
+                value = "".join(nm_vl.values())
+                if ( not os.path.exists(xml_path + xml_file) ):
+                    hadoop_configure.create_xml(xml_path + xml_file)
+                hadoop_configure.add_element(xml_path + xml_file, name, value)
+
+        hadoop_configure.pretty_xml(xml_path + xml_file)
+
+    os.system('cat /dev/null > ' + xml_path + 'slaves')
+    for host in d['nm_host'].split(','):
+        os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
+
+    for host in d['nm_host'].split(','):
+        scp_file(d, xml_path + 'slaves', host, xml_path)
+        for xml_file in data.keys():
+            scp_file(d, xml_path + xml_file, host, xml_path)
+
+
+# ###########################################################################
+# 函数名：main
+# 输  入：none
+# 返回值：none
 # ###########################################################################
 def main(argv = None):
     '''
@@ -638,11 +677,11 @@ def main(argv = None):
                         "add=", "clean", "delete=",     \
                         "help", "install", "switch="    \
                     ])
-    argnum = len(opts)
 
-    if not ( argnum == 1 or argnum == 2 ):
-        sys.exit("Usage: hadoop_install.py -[cih] | -[ads] software_name")
-    
+    argnum = len(sys.argv)
+    if argnum == 1:
+        sys.exit('Usage: hadoop_install.py -h')
+
     # 默认配置文件与安装脚本在同一目录下
     dict_conf = load_config("hadoop_install.cfg")
     
@@ -690,6 +729,7 @@ def main(argv = None):
                             sys.exit("install " + package_name + " error")
                 
                 init_hadoop(dict_conf)
+                config_hadoop(dict_conf)
             # 选项不存在
             else:
                 sys.exit("There is no other options")

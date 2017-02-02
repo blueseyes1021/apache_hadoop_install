@@ -1,0 +1,32 @@
+{
+	"core-site.xml":[
+		{"fs.default.name":"hdfs://master01:9000"},
+		{"hadoop.http.staticuser.user":"hdfs"},
+		{"hadoop.tmp.dir":"/tmp"}
+	],
+	"hdfs-site.xml":[
+		{"dfs.namenode.name.dir":"/var/data/hadoop/hdfs/nn"},
+		{"dfs.datanode.data.dir":"/var/data/hadoop/hdfs/dn"},
+		{"dfscheckpoint.dir":"/var/data/hadoop/hdfs/snn"},
+		{"dfscheckpoint.edits.dir":"/var/data/hadoop/hdfs/snn"},
+		{"dfs.namenode.http-address":"master01:50070"},
+		{"dfs.namenode.secondary.http-address":"master01:50090"},
+		{"dfs.replication":"2"}
+	],
+	"mapred-site.xml":[
+		{"mapreduce.framework.name":"yarn"},
+		{"mapreduce.jobhistory.address":"master01:10020"},
+		{"mapreduce.jobhistory.webapp.address":"master01:19888"},
+		{"yarn.app.mapreduce.am.staging-dir":"/tmp/hadoop-yarn/staging"}
+	],
+	"yarn-site.xml":[
+		{"yarn.resourcemanager.hostname":"master01"},
+		{"yarn.nodemanager.aux-services":"mapreduce_shuffle"},
+		{"yarn.nodemanager.aux-services.mapreduce_shuffle.class":"org.apache.hadoop.mapred.ShuffleHandler"},
+		{"yarn.web-proxy.address":"master01:8081"},
+		{"yarn.resourcemanager.scheduler.address":"master01:8030"},
+		{"yarn.resourcemanager.resource-tracker.address":"master01:8031"},
+		{"yarn.resourcemanager.address":"master01:8032"},
+		{"yarn.resourcemanager.admin.address":"master01:8033"}
+	]
+}
