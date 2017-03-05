@@ -216,7 +216,7 @@ def profiled_software(d, software):
     
     profiled_cmd = 'echo export ' + path_home + '=' + link_path \
                         + link_name + ' > ' + profile_path      \
-                        + link_name + r'.sh && echo export PATH=$PATH:' \
+                        + link_name + r'.sh && echo export PATH=\$PATH:' \
                         + '\$' + path_home + '/bin' + '>>'      \
                         + profile_path + link_name + r'.sh'
 
@@ -653,13 +653,34 @@ def config_hadoop(d):
         hadoop_configure.pretty_xml(xml_path + xml_file)
 
     os.system('cat /dev/null > ' + xml_path + 'slaves')
-    for host in d['nm_host'].split(','):
-        os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
+    os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
 
-    for host in d['nm_host'].split(','):
+    for host in d['dn_host'].split(','):
         scp_file(d, xml_path + 'slaves', host, xml_path)
         for xml_file in data.keys():
             scp_file(d, xml_path + xml_file, host, xml_path)
+
+
+
+# ###########################################################################
+# 函数名：config_spark
+# 输  入：(d)
+# 返回值：none
+# ###########################################################################
+def config_spark(d):
+    '''
+        添加spark配置信息
+    '''
+    xml_path = d['SPARK_CONF']
+
+    os.system('cat /dev/null > ' + xml_path + 'slaves')
+    os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
+
+    for host in d['dn_host'].split(','):
+        scp_file(d, xml_path + 'slaves', host, xml_path)
+
+
+
 
 
 # ###########################################################################
@@ -730,6 +751,7 @@ def main(argv = None):
                 
                 init_hadoop(dict_conf)
                 config_hadoop(dict_conf)
+                config_spark(dict_conf)
             # 选项不存在
             else:
                 sys.exit("There is no other options")
