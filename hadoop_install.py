@@ -116,7 +116,7 @@ def get_linkname(d, software):
     if re.match('jdk', software):
         key = 'JAVA_HOME'
     else:
-        key = re.search('(\w+)(_\S+)?-\d+\.\d+\.\d+', 
+        key = re.search('(\w+)(_\S+)?-\d+\.\d+\.\d+',
                 software).group(1).upper() + '_HOME'
 
     return d[key]
@@ -190,7 +190,7 @@ def link_software(d, software):
     link_path = d['LINK_HOME']
     install_path = d['INSTALL_PATH']
     upkname = software.split(r'.t')[0]
-    
+
     link_cmd = 'if [ ! -d ' + link_path + ' ];then mkdir -p '   \
         + link_path + ';fi && if [ -e ' + link_path + link_name \
         + ' ];then rm ' + link_path + link_name                 \
@@ -213,7 +213,7 @@ def profiled_software(d, software):
     profile_path = d['PROFILED']
     link_path = d['LINK_HOME']
     path_home = link_name.upper() + r'_HOME'
-    
+
     profiled_cmd = 'echo export ' + path_home + '=' + link_path \
                         + link_name + ' > ' + profile_path      \
                         + link_name + r'.sh && echo export PATH=\$PATH:' \
@@ -270,7 +270,7 @@ def operate_dir(d, opt):
     yarn_pid_dir_cmd = opt + ' ' + d['YARN_PID_DIR']
     hadoop_pid_dir_cmd = opt + ' ' + d['HADOOP_PID_DIR']
     hadoop_mapred_pid_dir_cmd = opt + ' ' + d['HADOOP_MAPRED_PID_DIR']
-    
+
     return (nn_data_dir_cmd,
             snn_data_dir_cmd,
             dn_data_dir_cmd,
@@ -302,7 +302,7 @@ def create_user(d):
                         + ' ' + d['USER_HDFS']
     user_mapred_cmd = 'useradd -g ' + d['GROUP_HADOOP'] \
                         + ' ' + d['USER_MAPRED']
-    
+
     return (group_hadoop_cmd,
             user_yarn_cmd,
             user_hdfs_cmd,
@@ -327,7 +327,7 @@ def clean_user(d):
     user_hdfs_cmd = 'userdel ' + d['USER_HDFS']
     user_mapred_cmd = 'userdel ' + d['USER_MAPRED']
     group_hadoop_cmd = 'groupdel ' + d['GROUP_HADOOP']
-    
+
     return (user_yarn_cmd,
             user_hdfs_cmd,
             user_mapred_cmd,
@@ -382,7 +382,7 @@ def chmod_user(d):
     hadoop_mapred_pid_dir_cmd = 'chown ' + d['USER_MAPRED'] \
                         + ':' + d['GROUP_HADOOP'] + ' '     \
                         + d['HADOOP_MAPRED_PID_DIR']
-    
+
     return (nn_data_dir_cmd,
             snn_data_dir_cmd,
             dn_data_dir_cmd,
@@ -409,6 +409,7 @@ def set_env(d):
         5.HADOOP_PID_DIR ==> hadoop-env.sh
         6.YARN_PID_DIR ==> yarn-env.sh
         7.HADOOP_MAPRED_PID_DIR ==> mapred-env.sh
+        8.HADOOP_CONF_DIR ==> spark-env.sh
     '''
     hadoop_log_dir_cmd = 'echo export HADOOP_LOG_DIR='      \
                         + d['HADOOP_LOG_DIR']               \
@@ -432,14 +433,20 @@ def set_env(d):
     hadoop_mapred_pid_dir_cmd = 'echo export HADOOP_MAPRED_PID_DIR=' \
                         + d['HADOOP_MAPRED_PID_DIR']        \
                         + ' >> /usr/mylink/hadoop/etc/hadoop/mapred-env.sh'
-    
+    hadoop_conf_dir_cmd = 'echo export HADOOP_CONF_DIR=' \
+                        + d['HADOOP_CONF_DIR']        \
+                        + ' >> /usr/mylink/spark/conf/spark-env.sh'
+
+
+
     return (hadoop_log_dir_cmd,
             hadoop_java_home_cmd,
             yarn_log_dir_cmd,
             hadoop_mapred_log_dir_cmd,
             hadoop_pid_dir_cmd,
             yarn_pid_dir_cmd,
-            hadoop_mapred_pid_dir_cmd)
+            hadoop_mapred_pid_dir_cmd,
+			hadoop_conf_dir_cmd)
 
 
 # ###########################################################################
@@ -456,7 +463,7 @@ def call_func(command, d, host):
             os.system(command)
         except:
             sys.exit(command + " error!")
-        
+
     else:
         try:
             ssh = paramiko.SSHClient()
@@ -464,12 +471,12 @@ def call_func(command, d, host):
             ssh.connect(host, int(d['PORT']), d['USER'], d['PASSWD'])
         except:
             sys.exit('create sshclient error!')
-        
+
         try:
             (stdin, stdout, stderr) = ssh.exec_command(command)
         except:
             sys.exit(stderr)
-        
+
         try:
             ssh.close()
         except:
@@ -569,7 +576,7 @@ def clean_software(d, software):
     print 'Clean ' + software + ' please waiting...'
     print '=' * 48
     for host in d['all_host'].split(','):
-    
+
         call_func('rm -rf ' + d['INSTALL_PATH'] + unpack_name, d, host)
         call_func('rm -rf ' + d['LINK_HOME'] + link_name, d, host)
         call_func('rm -rf ' + d['PROFILED'] + link_name + r'.sh', d, host)
@@ -636,30 +643,30 @@ def config_hadoop(d):
         添加hadoop配置信息
     '''
     cfg_file = d['HADOOP_JSON']
-    xml_path = d['HADOOP_ETC']
+    xml_path = d['HADOOP_CONF_DIR']
 
     fh = open(cfg_file, 'r')
     data = json.load(fh)
 
+    # 注意type(data)是字典型 可直接使用 data[key] ==> value
     for xml_file in data.keys():
-        for array in data.values():
-            for nm_vl in array:
-                name = "".join(nm_vl.keys())
-                value = "".join(nm_vl.values())
-                if ( not os.path.exists(xml_path + xml_file) ):
-                    hadoop_configure.create_xml(xml_path + xml_file)
-                hadoop_configure.add_element(xml_path + xml_file, name, value)
+        for nm_vl in data[xml_file]:
+            name = "".join(nm_vl.keys())
+            value = "".join(nm_vl.values())
+            if ( not os.path.exists(xml_path + xml_file) ):
+                hadoop_configure.create_xml(xml_path + xml_file)
+            hadoop_configure.add_element(xml_path + xml_file, name, value)
 
         hadoop_configure.pretty_xml(xml_path + xml_file)
 
     os.system('cat /dev/null > ' + xml_path + 'slaves')
-    os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
+    for host in d['nm_host'].split(','):
+        os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
 
-    for host in d['dn_host'].split(','):
+    for host in d['nm_host'].split(','):
         scp_file(d, xml_path + 'slaves', host, xml_path)
         for xml_file in data.keys():
             scp_file(d, xml_path + xml_file, host, xml_path)
-
 
 
 # ###########################################################################
@@ -674,11 +681,11 @@ def config_spark(d):
     xml_path = d['SPARK_CONF']
 
     os.system('cat /dev/null > ' + xml_path + 'slaves')
-    os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
+    for host in d['nm_host'].split(','):
+        os.system('echo ' + host + ' >> ' + xml_path + 'slaves')
 
-    for host in d['dn_host'].split(','):
+    for host in d['nm_host'].split(','):
         scp_file(d, xml_path + 'slaves', host, xml_path)
-
 
 
 
@@ -705,7 +712,7 @@ def main(argv = None):
 
     # 默认配置文件与安装脚本在同一目录下
     dict_conf = load_config("hadoop_install.cfg")
-    
+
     for op, package_name in opts:
         # 软件包名称不为空时：
         # 从添加、删除、更新组件中选取
@@ -719,7 +726,7 @@ def main(argv = None):
             # 选项不存在
             else:
                 sys.exit("There is no other options")
-        
+
         # 软件包名称为空时：
         # 从安装、卸载、帮助选项中选取
         else:
@@ -748,7 +755,7 @@ def main(argv = None):
                             install_software(dict_conf, package_name)
                         except:
                             sys.exit("install " + package_name + " error")
-                
+
                 init_hadoop(dict_conf)
                 config_hadoop(dict_conf)
                 config_spark(dict_conf)

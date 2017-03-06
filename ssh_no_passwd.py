@@ -24,8 +24,7 @@ if ( len(sys.argv) - 1 ) != 2:
 # 用户名
 #user = sys.argv[1]
 user = (os.popen('whoami').read()).strip()
-#print user + '!!!'
-# 密码	
+# 密码
 passwd = sys.argv[1]
 # xml配置文件
 xml_file = sys.argv[2]
