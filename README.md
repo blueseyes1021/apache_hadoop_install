@@ -1,8 +1,10 @@
-# apache_hadoop_install
-搭建apache版本hadoop集群环境（脚本化）
-注意：使用此工具需在master节点安装python的paramiko模块
+apache_hadoop_install
+=====================
 
-从头搭建apache hadoop集群(虚拟机)
+### 搭建apache版本hadoop集群环境（脚本化）
+**注意：使用此工具需在master节点安装python的paramiko模块**
+
+> 从头搭建apache hadoop集群(虚拟机)
 需安装openssh-server启动ssh服务
 并开启root访问权限
 主机信息：
@@ -15,20 +17,21 @@
 
 分别编辑各主机以下配置文件(debain linux)
 修改主机名
-/etc/hostname
+`/etc/hostname`
 配置主机名和ip对应关系
-/etc/hosts
+`/etc/hosts`
 
-# debain 发行版的 linux
-# 虚拟机下 配置only-host模式互访
-# 编辑 /etc/network/interfaces 来设置静态固定ip
+debain 发行版的 linux
+虚拟机下 配置only-host模式互访
+编辑 /etc/network/interfaces 来设置静态固定ip
 
-# 文件内容如下
-# -------------------------------------------------------------
-# interfaces(5) file used by ifup(8) and ifdown(8)
+文件内容如下
+-------------------------------------------------------------
+interfaces(5) file used by ifup(8) and ifdown(8)
 auto lo
 iface lo inet loopback
 
+```
 # 添加网卡enp0s3配置
 auto enp0s3
 iface enp0s3 inet static
@@ -37,8 +40,8 @@ address 192.168.100.101
 netmask 255.255.255.0
 network 192.168.100.0
 broadcast 192.168.100.255
-# -------------------------------------------------------------
-
+```
+```
 # 安装python包管理工具pip
 在master节点
 sudo apt-get install python-pip
@@ -47,12 +50,14 @@ sudo apt-get install python-pip
 sudo pip install paramiko
 # 更新pip
 sudo pip install --upgrade pip
-
+```
+```
 # paramiko安装错误解决
 sudo apt-get install libssl-dev python-dev libffi-dev
 # 更新paramiko包
 sudo pip install paramiko --upgrade
-
+```
+```
 # 编辑ssh_no_passwd.xml
 <sshconnect>
     <from>master01</from>
@@ -65,8 +70,8 @@ sudo pip install paramiko --upgrade
 vi /etc/ssh/sshd_conf
 # 修改为 
 PermitRootLogin yes
-
-
+```
+```
 执行ssh_no_passwd.py
 使用root用户方便后续安装软件
 su - root
@@ -91,7 +96,8 @@ Welcome to Ubuntu 16.04.1 LTS
 
 详细帮助请使用
 ./hadoop_install.py -h
-
+```
+```
 # 帮助手册
 Usage: hdfs [--config confdir] [--loglevel loglevel] COMMAND
        where COMMAND is one of:
@@ -126,7 +132,8 @@ cacheadmin           configure the HDFS cache
 crypto               configure HDFS encryption zones
 storagepolicies      list/get/set block storage policies
 version              print the version
-
+```
+```
 # ***启动hadoop服务***
 # 安装完成后格式化hdfs
 su - root
@@ -161,3 +168,4 @@ hdfs dfs -mkdir -p /tmp/hadoop-yarn/staging/history/done_intermediate
 # yarn管理的mapreduce作业存放路径
 # mapreduce.jobhistory.joblist.cache.size
 # hadoop的历史服务器的WEB UI 最多显示的作业记录数量
+```
