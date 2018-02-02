@@ -25,12 +25,6 @@ debain 发行版的 linux
 虚拟机下 配置only-host模式互访
 编辑 /etc/network/interfaces 来设置静态固定ip
 
-文件内容如下
--------------------------------------------------------------
-interfaces(5) file used by ifup(8) and ifdown(8)
-auto lo
-iface lo inet loopback
-
 ```
 # 添加网卡enp0s3配置
 auto enp0s3
