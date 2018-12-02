@@ -4,17 +4,18 @@ apache_hadoop_install
 ### 搭建apache版本hadoop集群环境（脚本化）
 
 **注意：使用此工具需在 master 节点安装 python 的 paramiko 模块**
-
-> 从头搭建apache hadoop集群(虚拟机)
-> 需安装openssh-server启动ssh服务
-> 并开启root访问权限
-> 主机信息：
-> 主节点
->     master01
-> 从节点
->     slave01
->     slave02
->     slave03
+```
+从头搭建apache hadoop集群(虚拟机)
+需安装openssh-server启动ssh服务
+并开启root访问权限
+主机信息：
+主节点
+    master01
+从节点
+    slave01
+    slave02
+    slave03
+```
 
 1. 编辑各主机配置文件 (debain linux)
 ```bash
